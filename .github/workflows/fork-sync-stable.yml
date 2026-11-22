@@ -1,0 +1,241 @@
+# Keeps this fork's feature branch on top of upstream's latest *stable* release
+# and publishes a macOS build of it as a release in this fork.
+#
+# 1. Syncs the fork's main with pingdotgg/t3code main.
+# 2. Merges the newest stable upstream tag (vX.Y.Z, never nightly or preview)
+#    into feat/detach-right-panel. Conflicting hunks keep this branch's side,
+#    so the fork's features survive; the auto-resolved files are listed in the
+#    run summary and the merge commit.
+# 3. Typechecks and runs the fork features' tests before pushing anything.
+# 4. Builds an unsigned macOS (Apple silicon) app and publishes it as the
+#    release "fork-vX.Y.Z" in this fork.
+#
+# Scheduled runs only fire from the default branch, so this fork's default
+# branch is feat/detach-right-panel. Pushing a merge that touches upstream's
+# .github/workflows files needs a token with the "workflows" permission: add a
+# fine-grained token with Contents, Workflows and Actions (read and write) on
+# this repository as the SYNC_TOKEN secret.
+name: Sync upstream stable
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream stable tag to merge (for example v0.1.11). Empty uses the latest stable release."
+        required: false
+        type: string
+      force_build:
+        description: "Build and publish even when the release for this tag already exists"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: fork-sync-stable
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: pingdotgg/t3code
+  FEATURE_BRANCH: feat/detach-right-panel
+
+jobs:
+  sync:
+    # Never run in upstream or in other forks that copy this branch.
+    if: github.repository == '4nkit-5hukla/t3code'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.push.outputs.sha }}
+      build: ${{ steps.decide.outputs.build }}
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+    steps:
+      - name: Turn off upstream's workflows in this fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Upstream's scheduled and push workflows are written for pingdotgg/t3code.
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" --paginate \
+            --jq '.workflows[] | select(.state == "active") | select(.path != ".github/workflows/fork-sync-stable.yml") | .id' |
+            while read -r id; do
+              gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$id/disable" || true
+            done
+
+      - name: Resolve the upstream stable tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-$(gh api "repos/$UPSTREAM_REPOSITORY/releases/latest" --jq .tag_name)}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$tag is not a stable release tag (vX.Y.Z)."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Upstream stable release: \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sync the fork's main with upstream
+        run: gh repo sync "$GITHUB_REPOSITORY" --branch main || echo "::warning::Could not sync main; continuing with the feature branch."
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FEATURE_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Merge the stable tag, keeping this branch's side of conflicts
+        id: merge
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags "https://github.com/$UPSTREAM_REPOSITORY.git" "+refs/tags/$TAG:refs/tags/$TAG"
+
+          if git merge-base --is-ancestor "$TAG" HEAD; then
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+            echo "$FEATURE_BRANCH already contains $TAG." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          message="Merge upstream stable $TAG into $FEATURE_BRANCH"
+          if git merge --no-ff --no-edit -m "$message" "$TAG"; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+            echo "Merged $TAG with no conflicts." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Content conflicts: keep this branch's hunks, take upstream everywhere else.
+          git merge --abort
+          git merge --no-ff --no-commit -X ours "$TAG" || true
+          # What -X ours cannot settle (modify/delete, add/add): keep this branch's file.
+          resolved=$(git diff --name-only --diff-filter=U)
+          for path in $resolved; do
+            if git cat-file -e "HEAD:$path" 2>/dev/null; then
+              git checkout --ours -- "$path" && git add -- "$path"
+            else
+              git rm -q -- "$path"
+            fi
+          done
+          {
+            echo "$message"
+            echo
+            echo "Conflicts resolved automatically in favour of $FEATURE_BRANCH."
+            if [[ -n "$resolved" ]]; then
+              echo
+              echo "Files kept from $FEATURE_BRANCH whole:"
+              printf -- '- %s\n' $resolved
+            fi
+          } > "$RUNNER_TEMP/merge-message"
+          git commit -q -F "$RUNNER_TEMP/merge-message"
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+          echo "auto_resolved=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Merged $TAG with conflicts resolved toward $FEATURE_BRANCH"
+            [[ -n "$resolved" ]] && printf -- '- `%s` kept whole\n' $resolved
+            echo
+            echo "Review the merge commit: hunks that conflicted kept this branch's version."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: ./.github/actions/setup-ci-deps
+        if: steps.merge.outputs.merged == 'true'
+
+      - name: Typecheck
+        if: steps.merge.outputs.merged == 'true'
+        run: vp run typecheck
+
+      - name: Test the fork's features
+        if: steps.merge.outputs.merged == 'true'
+        run: |
+          (cd packages/shared && vp test run src/browserPasswordSites)
+          (cd apps/desktop && vp test run --project dom)
+          (cd apps/web && vp test run --project unit src/workspaceTitlebar src/rightPanelStore src/components/RightPanelTabs)
+
+      - name: Push the merge
+        id: push
+        env:
+          MERGED: ${{ steps.merge.outputs.merged }}
+        run: |
+          if [[ "$MERGED" == "true" ]]; then
+            git push origin "HEAD:$FEATURE_BRANCH"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to build
+        id: decide
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          MERGED: ${{ steps.merge.outputs.merged }}
+          FORCE: ${{ inputs.force_build }}
+        run: |
+          if [[ "$MERGED" == "true" || "$FORCE" == "true" ]] || ! gh release view "fork-$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report a failed sync
+        if: failure()
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Upstream sync of ${TAG:-the latest stable release} failed"
+          if ! gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number' | grep -q .; then
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" \
+              --body "Merging \`${TAG}\` into \`$FEATURE_BRANCH\` failed and nothing was pushed. See $RUN_URL" || true
+          fi
+
+  build-macos:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.sync.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - uses: ./.github/actions/setup-ci-deps
+
+      - name: Build the macOS app
+        env:
+          # Updates come from this fork's releases, never upstream's.
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+        run: node scripts/build-desktop-artifact.ts --platform mac --arch arm64 --target dmg
+
+      - name: Publish the fork release
+        env:
+          SHA: ${{ needs.sync.outputs.sha }}
+        run: |
+          shopt -s nullglob
+          assets=()
+          for file in release/*.dmg release/*.zip release/*.blockmap release/*.yml; do
+            [[ "$(basename "$file")" == "builder-debug.yml" ]] || assets+=("$file")
+          done
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "::error::The build produced no release assets."
+            exit 1
+          fi
+          release="fork-$TAG"
+          notes="T3 Code $TAG from $UPSTREAM_REPOSITORY with this fork's features (detachable right panel, browser password manager).
+
+          Unsigned build for Apple silicon. After moving the app to Applications, run:
+          \`xattr -cr /Applications/T3\\ Code*.app\`"
+          if gh release view "$release" >/dev/null 2>&1; then
+            gh release upload "$release" "${assets[@]}" --clobber
+          else
+            gh release create "$release" "${assets[@]}" --target "$SHA" \
+              --title "T3 Code $TAG (fork)" --notes "$notes" --latest
+          fi
