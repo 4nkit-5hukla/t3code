@@ -2,6 +2,7 @@ import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/e
 import { type ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { syncPersistedStoreAcrossWindows } from "./lib/crossWindowStoreSync";
 import { resolveStorage } from "./lib/storage";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
@@ -841,6 +842,20 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
           ),
         ),
       }),
+      // A re-read from another window must keep observations this window has not persisted yet.
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<TerminalUiStateStoreState>;
+        return {
+          ...currentState,
+          ...persisted,
+          serverObservationsByThreadKey: {
+            ...currentState.serverObservationsByThreadKey,
+            ...persisted.serverObservationsByThreadKey,
+          },
+        };
+      },
     },
   ),
 );
+
+syncPersistedStoreAcrossWindows(useTerminalUiStateStore);

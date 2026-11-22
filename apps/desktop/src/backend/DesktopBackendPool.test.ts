@@ -205,6 +205,10 @@ function layerPool(
         ElectronApp.layer,
         Layer.succeed(DesktopWindow.DesktopWindow, {
           createMain: Effect.die("unexpected window create"),
+          createMainWithUrl: () => Effect.die("unexpected window createWithUrl"),
+          openDetached: () => Effect.die("unexpected openDetached"),
+          closeDetached: Effect.void,
+          isDetachedOpen: Effect.succeed(false),
           ensureMain: Effect.die("unexpected window ensure"),
           revealOrCreateMain: Effect.die("unexpected window reveal"),
           activate: Effect.die("unexpected window activate"),

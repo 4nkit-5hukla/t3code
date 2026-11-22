@@ -10,6 +10,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { useClosedViewStore } from "./closedViewStore";
 import { m } from "./i18n/messages";
+import { syncPersistedStoreAcrossWindows } from "./lib/crossWindowStoreSync";
 import { resolveStorage } from "./lib/storage";
 import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
@@ -1315,9 +1316,24 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       }),
       migrate: migratePersistedRightPanelState,
+      // A re-read from another window must keep the session-only list panels this window holds.
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<RightPanelStoreState>;
+        if (!persisted.byThreadKey) return { ...currentState, ...persisted };
+        const sessionOnly = Object.entries(currentState.byThreadKey).filter(([threadKey]) =>
+          isPullRequestsPanelKey(threadKey),
+        );
+        return {
+          ...currentState,
+          ...persisted,
+          byThreadKey: { ...persisted.byThreadKey, ...Object.fromEntries(sessionOnly) },
+        };
+      },
     },
   ),
 );
+
+syncPersistedStoreAcrossWindows(useRightPanelStore);
 
 useRightPanelStore.subscribe((next, previous) => {
   if (next.closeRevisionByThreadKey === previous.closeRevisionByThreadKey) return;

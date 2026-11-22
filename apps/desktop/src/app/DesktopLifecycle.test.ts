@@ -93,6 +93,10 @@ function layerDesktopWindow(
 ) {
   return Layer.succeed(DesktopWindow.DesktopWindow, {
     createMain: Effect.die("unexpected window creation"),
+    createMainWithUrl: () => Effect.die("unexpected window creation"),
+    openDetached: () => Effect.die("unexpected window creation"),
+    closeDetached: Effect.void,
+    isDetachedOpen: Effect.succeed(false),
     ensureMain: Effect.die("unexpected window creation"),
     revealOrCreateMain: Effect.die("unexpected window creation"),
     activate: input.activate ?? Effect.void,

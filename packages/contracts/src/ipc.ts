@@ -1070,6 +1070,10 @@ export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
 export interface DesktopBridge {
+  openDetachedWindow?: (targetPath: string) => Promise<void>;
+  closeDetachedWindow?: () => Promise<void>;
+  getDetachedWindowState?: () => Promise<boolean>;
+  onDetachedWindowStateChanged?: (listener: (isOpen: boolean) => void) => () => void;
   getAppBranding: () => DesktopAppBranding | null;
   /** `null` until the desktop host has read the login shell's environment; ask again later. */
   getRelayTelemetryEnabled: () => boolean | null;

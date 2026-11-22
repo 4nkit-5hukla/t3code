@@ -9,6 +9,7 @@ import { createBrowserHistory, createHashHistory } from "@tanstack/react-router"
 import * as Schema from "effect/Schema";
 
 import { applyAppearanceContrast } from "./appearanceContrast";
+import { initDetachedWindowSync } from "./workspaceTitlebar";
 import { applyAppearanceFontVariables, TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "./appearanceFonts";
 import { startElectronBrowserHost } from "./browser/ElectronBrowserHost";
 import { startBrowserProfileReporting } from "./browser/BrowserProfileReporter";
@@ -264,6 +265,7 @@ export function startAppServices(): AppRouter {
   if (isElectron) {
     syncDocumentElectronPlatformClasses(navigator.platform);
     syncDocumentWindowControlsOverlayClass();
+    initDetachedWindowSync(router.history);
   }
 
   installDesktopPasteAsText(window.desktopBridge, window);

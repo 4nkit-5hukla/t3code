@@ -4,6 +4,7 @@ import {
   SquareMenuIcon,
   Maximize2Icon,
   Minimize2Icon,
+  SquareArrowDownLeftIcon,
 } from "lucide-react";
 import { useGT } from "gt-react";
 import { memo, type ReactNode, useLayoutEffect, useRef } from "react";
@@ -23,6 +24,8 @@ export interface PanelLayoutControlsProps {
   showThreadPanelControl?: boolean;
   showTerminalControl?: boolean;
   showRightPanelControl?: boolean;
+  showDockBackControl?: boolean;
+  onDockBack?: () => void;
   terminalAvailable: boolean;
   terminalOpen: boolean;
   terminalShortcutLabel: string | null;
@@ -43,6 +46,8 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   showThreadPanelControl = true,
   showTerminalControl = true,
   showRightPanelControl = true,
+  showDockBackControl,
+  onDockBack,
   terminalAvailable,
   terminalOpen,
   terminalShortcutLabel,
@@ -143,6 +148,9 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
           </TooltipPopup>
         </Tooltip>
       ) : null}
+      {showDockBackControl && onDockBack ? (
+        <RightPanelDockBackControl onDockBack={onDockBack} />
+      ) : null}
     </div>
   );
 });
@@ -181,6 +189,34 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
   );
 });
 
+export const RightPanelDockBackControl = memo(function RightPanelDockBackControl({
+  onDockBack,
+}: {
+  onDockBack: () => void;
+}) {
+  const gt = useGT();
+  const label = gt("Dock back into main window");
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Toggle
+            className="shrink-0 [-webkit-app-region:no-drag]"
+            pressed={false}
+            onPressedChange={onDockBack}
+            aria-label={label}
+            variant="ghost"
+            size="sm"
+          >
+            <SquareArrowDownLeftIcon className="size-4" />
+          </Toggle>
+        }
+      />
+      <TooltipPopup side="bottom">{label}</TooltipPopup>
+    </Tooltip>
+  );
+});
+
 /** The thread panel toggle on a header whose right side the inline right panel covers. */
 export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
   const mobileSidebarSheetMounted = useMobileSidebarSheetMounted();
@@ -200,6 +236,8 @@ export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
 /** The window's top-right panel controls, with the maximize toggle while the panel is open. */
 export function WorkspaceTitlebarControls(props: {
   readonly showMaximizeControl: boolean;
+  readonly showDockBackControl?: boolean;
+  readonly onDockBack?: () => void;
   readonly rightPanelOpen: boolean;
   readonly animationsActive: boolean;
   readonly maximized: boolean;
@@ -238,6 +276,11 @@ export function WorkspaceTitlebarControls(props: {
       )}
       data-workspace-titlebar-controls
     >
+      {props.showDockBackControl && props.onDockBack ? (
+        <span className="flex shrink-0 pointer-events-auto">
+          <RightPanelDockBackControl onDockBack={props.onDockBack} />
+        </span>
+      ) : null}
       {props.showMaximizeControl ? (
         <span
           aria-hidden={!props.rightPanelOpen}

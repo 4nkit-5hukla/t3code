@@ -470,7 +470,9 @@ export function AppSidebarLayout({
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        storageKey="chat_thread_sidebar_open"
+        storageKey={showSidebar ? "chat_thread_sidebar_open" : undefined}
+        defaultOpen={showSidebar}
+        open={showSidebar ? undefined : false}
         style={sidebarProviderStyle}
       >
         {showSidebar ? (

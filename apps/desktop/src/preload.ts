@@ -136,6 +136,18 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     return () => ipcRenderer.removeListener(IpcChannels.TRACKPAD_SCROLL_END_CHANNEL, handler);
   },
   revealWindow: () => ipcRenderer.invoke(IpcChannels.REVEAL_WINDOW_CHANNEL),
+  openDetachedWindow: (targetPath: string) =>
+    ipcRenderer.invoke(IpcChannels.OPEN_DETACHED_WINDOW_CHANNEL, targetPath),
+  closeDetachedWindow: () => ipcRenderer.invoke(IpcChannels.CLOSE_DETACHED_WINDOW_CHANNEL),
+  getDetachedWindowState: () => ipcRenderer.invoke(IpcChannels.GET_DETACHED_WINDOW_STATE_CHANNEL),
+  onDetachedWindowStateChanged: (listener: (isOpen: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, isOpen: unknown) => {
+      listener(Boolean(isOpen));
+    };
+    ipcRenderer.on(IpcChannels.DETACHED_WINDOW_STATE_CHANGED_CHANNEL, handler);
+    return () =>
+      ipcRenderer.removeListener(IpcChannels.DETACHED_WINDOW_STATE_CHANGED_CHANNEL, handler);
+  },
   getPrimaryPasteEnabled: () => primaryPasteEnabled,
   getSystemLocale: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_SYSTEM_LOCALE_CHANNEL);

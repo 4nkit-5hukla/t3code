@@ -31,6 +31,8 @@ import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as DesktopLocalEnvironmentAuth from "../../backend/DesktopLocalEnvironmentAuth.ts";
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as DesktopWindow from "../../window/DesktopWindow.ts";
+import { getDesktopUrl } from "../../electron/ElectronProtocol.ts";
 import * as DesktopManagedPolicy from "../../app/DesktopManagedPolicy.ts";
 import * as DesktopPrimaryPaste from "../../app/DesktopPrimaryPaste.ts";
 import * as DesktopAppSettings from "../../settings/DesktopAppSettings.ts";
@@ -611,4 +613,43 @@ export const restartAudioService = DesktopIpc.makeIpcMethod({
   payload: Schema.Void,
   result: Schema.Boolean,
   handler: ElectronAudio.restart,
+});
+
+export const openDetachedWindow = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.OPEN_DETACHED_WINDOW_CHANNEL,
+  payload: Schema.String,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.openDetachedWindow")(function* (targetPath) {
+    const desktopWindow = yield* DesktopWindow.DesktopWindow;
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const origin = getDesktopUrl(environment.isDevelopment).replace(/\/$/, "");
+    const targetUrl =
+      targetPath.startsWith("http://") ||
+      targetPath.startsWith("https://") ||
+      targetPath.startsWith("t3code://") ||
+      targetPath.startsWith("t3code-dev://")
+        ? targetPath
+        : `${origin}${targetPath.startsWith("/") ? "" : "/"}${targetPath}`;
+    yield* desktopWindow.openDetached(targetUrl);
+  }),
+});
+
+export const closeDetachedWindow = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.CLOSE_DETACHED_WINDOW_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.closeDetachedWindow")(function* () {
+    const desktopWindow = yield* DesktopWindow.DesktopWindow;
+    yield* desktopWindow.closeDetached;
+  }),
+});
+
+export const getDetachedWindowState = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.GET_DETACHED_WINDOW_STATE_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Boolean,
+  handler: Effect.fn("desktop.ipc.window.getDetachedWindowState")(function* () {
+    const desktopWindow = yield* DesktopWindow.DesktopWindow;
+    return yield* desktopWindow.isDetachedOpen;
+  }),
 });

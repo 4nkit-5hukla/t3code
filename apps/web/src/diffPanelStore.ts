@@ -5,6 +5,7 @@ import type { RunId, ScopedThreadRef, ThreadId, TurnItemId } from "@t3tools/cont
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { syncPersistedStoreAcrossWindows } from "./lib/crossWindowStoreSync";
 import { resolveStorage } from "./lib/storage";
 
 export interface ToolCallDiffTarget {
@@ -167,6 +168,8 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
     },
   ),
 );
+
+syncPersistedStoreAcrossWindows(useDiffPanelStore);
 
 interface DiffPanelSessionStoreState {
   collapsedFileKeysByScopeKey: Record<string, ReadonlySet<string>>;

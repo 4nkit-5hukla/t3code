@@ -24,6 +24,7 @@ import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import {
+  DETACHED_WINDOW_STATE_CHANGED_CHANNEL,
   MENU_ACTION_CHANNEL,
   QUIT_SHORTCUT_CHANNEL,
   SNAP_SHOT_EVENT_CHANNEL,
@@ -125,6 +126,14 @@ export class DesktopWindow extends Context.Service<
   DesktopWindow,
   {
     readonly createMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
+    readonly createMainWithUrl: (
+      initialUrl?: Option.Option<string>,
+    ) => Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
+    readonly openDetached: (
+      targetUrl: string,
+    ) => Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
+    readonly closeDetached: Effect.Effect<void>;
+    readonly isDetachedOpen: Effect.Effect<boolean>;
     readonly ensureMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
     readonly revealOrCreateMain: Effect.Effect<Electron.BrowserWindow, DesktopWindowError>;
     readonly activate: Effect.Effect<void, DesktopWindowError>;
@@ -205,6 +214,25 @@ function displayMatching(
     }
   }
   return match;
+}
+
+function resolveDetachedInitialBounds(
+  allDisplays: readonly Electron.Display[],
+  currentMainWindowBounds: Electron.Rectangle | null,
+): Electron.Rectangle | null {
+  if (allDisplays.length > 1) {
+    const currentDisplay = currentMainWindowBounds
+      ? Electron.screen.getDisplayMatching(currentMainWindowBounds)
+      : Electron.screen.getPrimaryDisplay();
+    const otherDisplay =
+      allDisplays.find((d) => d.id !== currentDisplay.id) ?? allDisplays[1] ?? allDisplays[0];
+    if (otherDisplay) {
+      return otherDisplay.workArea;
+    }
+  } else if (allDisplays.length === 1 && allDisplays[0]) {
+    return allDisplays[0].workArea;
+  }
+  return null;
 }
 
 // Normal bounds of a maximized window can sit on, or straddle into, another display than the window.
@@ -427,6 +455,9 @@ export const make = Effect.gen(function* () {
     );
 
   const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
+  let detachedWindow: Electron.BrowserWindow | null = null;
+  // The window the panel was detached from; focus can make "current main" the detached one.
+  let dockTargetWindow: Electron.BrowserWindow | null = null;
 
   const zoomWindow = Effect.fn("desktop.window.zoomWindow")(function* (
     window: Electron.BrowserWindow,
@@ -441,13 +472,13 @@ export const make = Effect.gen(function* () {
     yield* previewManager.reapplyZoom();
   });
 
-  const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
-    Option.Option<Electron.BrowserWindow>,
-    DesktopWindowError
-  > {
+  const createWindow = Effect.fn("desktop.window.createWindow")(function* (
+    initialUrl?: Option.Option<string>,
+  ): Effect.fn.Return<Option.Option<Electron.BrowserWindow>, DesktopWindowError> {
     if (yield* Ref.get(desktopState.quitting)) return Option.none();
     yield* previewManager.getBrowserSession();
-    const applicationUrl = getDesktopUrl(environment.isDevelopment);
+    const defaultUrl = getDesktopUrl(environment.isDevelopment);
+    const applicationUrl = Option.getOrElse(initialUrl ?? Option.none(), () => defaultUrl);
     const iconPaths = yield* assets.iconPaths;
     const iconOption = getIconOption(iconPaths, environment.platform);
     const shouldUseDarkColors = yield* electronTheme.shouldUseDarkColors;
@@ -469,7 +500,29 @@ export const make = Effect.gen(function* () {
         : yield* logWindowWarning("failed to read connected displays; using defaults", {
             cause: displayBoundsResult.cause,
           }).pipe(Effect.as<readonly Electron.Rectangle[]>([]));
-    const initialBounds = resolveInitialMainWindowBounds(persistedBounds, displayBounds);
+    let initialBounds = resolveInitialMainWindowBounds(persistedBounds, displayBounds);
+    const isDetachedTarget = Option.match(initialUrl ?? Option.none(), {
+      onNone: () => false,
+      onSome: (url) => url.includes("detached=true"),
+    });
+    if (isDetachedTarget && displayBoundsResult._tag === "Success") {
+      const maybeCurrentMain = yield* currentMainWindow;
+      const currentMainBounds = Option.match(maybeCurrentMain, {
+        onNone: () => null,
+        onSome: (win) => (win.isDestroyed() ? null : win.getBounds()),
+      });
+      const detachedBounds = yield* Effect.sync(() => {
+        try {
+          const allDisplays = Electron.screen.getAllDisplays();
+          return resolveDetachedInitialBounds(allDisplays, currentMainBounds);
+        } catch {
+          return null;
+        }
+      });
+      if (detachedBounds !== null) {
+        initialBounds = detachedBounds;
+      }
+    }
     const restoredPersistedBounds = persistedBounds !== null && initialBounds === persistedBounds;
     if (persistedBounds !== null && initialBounds === DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE) {
       yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
@@ -569,6 +622,7 @@ export const make = Effect.gen(function* () {
       return pendingBoundsPersistFiber;
     };
     const scheduleBoundsPersist = () => {
+      if (isDetachedTarget) return;
       const state = readPersistableState();
       if (
         !boundsPersistenceEnabled &&
@@ -612,7 +666,9 @@ export const make = Effect.gen(function* () {
         fiber === undefined ? Effect.void : Fiber.join(fiber).pipe(Effect.asVoid),
       ),
     );
-    flushMainWindowBounds = flushBoundsPersist;
+    if (!isDetachedTarget) {
+      flushMainWindowBounds = flushBoundsPersist;
+    }
 
     yield* previewManager.setMainWindow(window);
     if (yield* Ref.get(desktopState.quitting)) {
@@ -1011,7 +1067,7 @@ export const make = Effect.gen(function* () {
       firstRevealComplete = true;
       pendingMainReveals.delete(window);
       window.webContents.setBackgroundThrottling(true);
-      if (persistedSettings.mainWindowMaximized) window.maximize();
+      if (!isDetachedTarget && persistedSettings.mainWindowMaximized) window.maximize();
       yield* electronWindow.reveal(window);
       yield* dismissConnectingSplash;
     });
@@ -1029,6 +1085,14 @@ export const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
+      if (detachedWindow === window) {
+        detachedWindow = null;
+        void runPromise(
+          electronWindow
+            .sendAll(DETACHED_WINDOW_STATE_CHANGED_CHANNEL, false)
+            .pipe(Effect.andThen(restoreDockTarget(window))),
+        );
+      }
       if (!backendHasStarted) mainClosedDuringStartup = true;
       clearDevelopmentLoadRetry();
       clearBoundsPersist();
@@ -1038,14 +1102,20 @@ export const make = Effect.gen(function* () {
     return Option.some(window);
   });
 
-  const createMain = Effect.gen(function* () {
-    const window = yield* createWindow();
+  const createMainWithUrl = Effect.fn("desktop.window.createMainWithUrl")(function* (
+    initialUrl?: Option.Option<string>,
+  ) {
+    const window = yield* createWindow(initialUrl);
     if (Option.isSome(window)) {
       mainClosedDuringStartup = false;
       yield* logWindowInfo("main window created");
     }
     return window;
-  }).pipe(Effect.withSpan("desktop.window.createMain"));
+  });
+
+  const createMain = createMainWithUrl(Option.none()).pipe(
+    Effect.withSpan("desktop.window.createMain"),
+  );
 
   const ensureMain = Effect.gen(function* () {
     if (yield* Ref.get(desktopState.quitting)) return Option.none<Electron.BrowserWindow>();
@@ -1156,8 +1226,69 @@ export const make = Effect.gen(function* () {
     yield* dispatch;
   });
 
+  /** Hands previews back to the window the panel came from and brings it forward. */
+  const restoreDockTarget = Effect.fn("desktop.window.restoreDockTarget")(function* (
+    closing: Electron.BrowserWindow,
+  ) {
+    let target = dockTargetWindow;
+    dockTargetWindow = null;
+    if (target === null || target.isDestroyed()) {
+      const current = yield* currentMainWindow;
+      target = Option.isSome(current) && current.value !== closing ? current.value : null;
+    }
+    if (target === null || target.isDestroyed()) return;
+    // The detached window took over the preview host; webviews in this window need it back.
+    yield* previewManager
+      .setMainWindow(target)
+      .pipe(
+        Effect.catch((cause) =>
+          logWindowWarning("failed to restore preview host window", { cause }),
+        ),
+      );
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+  });
+
+  const openDetached = Effect.fn("desktop.window.openDetached")(function* (targetUrl: string) {
+    if (detachedWindow !== null && !detachedWindow.isDestroyed()) {
+      if (detachedWindow.isMinimized()) detachedWindow.restore();
+      detachedWindow.show();
+      detachedWindow.focus();
+      return detachedWindow;
+    }
+    const source = yield* currentMainWindow;
+    dockTargetWindow = Option.isSome(source) ? source.value : null;
+    const window = yield* createMainWithUrl(Option.some(targetUrl)).pipe(
+      Effect.flatMap(requireWindow),
+    );
+    detachedWindow = window;
+    window.show();
+    window.focus();
+    yield* electronWindow.sendAll(DETACHED_WINDOW_STATE_CHANGED_CHANNEL, true);
+    return window;
+  });
+
+  // The "closed" listener announces the dock and restores the main window once the close lands.
+  const closeDetached = Effect.sync(() => {
+    if (detachedWindow === null || detachedWindow.isDestroyed()) return;
+    try {
+      detachedWindow.close();
+    } catch {}
+  }).pipe(Effect.withSpan("desktop.window.closeDetached"));
+
+  const isDetachedOpen = Effect.sync(
+    () => detachedWindow !== null && !detachedWindow.isDestroyed(),
+  );
+
   return DesktopWindow.of({
     createMain: createMain.pipe(Effect.flatMap(requireWindow)),
+    createMainWithUrl: Effect.fn("DesktopWindow.createMainWithUrl")((initialUrl) =>
+      createMainWithUrl(initialUrl).pipe(Effect.flatMap(requireWindow)),
+    ),
+    openDetached,
+    closeDetached,
+    isDetachedOpen,
     ensureMain: ensureMain.pipe(Effect.flatMap(requireWindow)),
     revealOrCreateMain,
     prepareCaptureReveal: Effect.gen(function* () {

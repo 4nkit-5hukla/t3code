@@ -49,6 +49,7 @@ import {
   Globe2,
   MessagesSquare,
   Plus,
+  ExternalLink,
   TerminalSquare,
   Volume2Icon,
   VolumeOffIcon,
@@ -100,7 +101,7 @@ import {
   useSharedPullRequestSummary,
 } from "~/state/pullRequests";
 import { useEnvironmentQuery } from "~/state/query";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS, isDetachedWindow } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./preview/PreviewPanelShell";
 import { FaviconImage } from "./preview/PreviewFaviconIcon";
@@ -123,6 +124,8 @@ export interface RightPanelTabsProps {
   defaultWidth?: number;
   inlineSize?: PreviewPanelInlineSize;
   layoutControls?: ReactNode;
+  /** Absent where the panel cannot move to its own window. */
+  onDetach?: (() => void) | undefined;
   surfaces: readonly RightPanelSurface[];
   environmentId: EnvironmentId | null;
   activeSurfaceId: string | null;
@@ -344,6 +347,7 @@ function RightPanelEmptyState(props: {
   deviceAvailable: boolean;
   sideChatAvailable: boolean;
   sideChatDisabledReason: string | null;
+  onDetach?: (() => void) | undefined;
 }) {
   const gt = useGT();
   const messages = useMessages();
@@ -578,6 +582,20 @@ function RightPanelEmptyState(props: {
             ),
           )}
         </div>
+        {props.onDetach ? (
+          <div className="mt-2 border-border/60 border-t pt-2">
+            <button
+              type="button"
+              onClick={props.onDetach}
+              className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-(--control-radius) px-2.5 text-left text-sm transition-colors hover:bg-accent/60"
+            >
+              <ExternalLink className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                <T>Detach panel to new window</T>
+              </span>
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1099,6 +1117,7 @@ function RightPanelTab(
 }
 
 export function RightPanelTabs(props: RightPanelTabsProps) {
+  const isDetached = isDetachedWindow();
   const gt = useGT();
   const messages = useMessages();
   const focusedSurface = props.surfaces.find((surface) => surface.id === props.activeSurfaceId);
@@ -1430,7 +1449,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     >
       <div
         className={cn(
-          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
+          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1",
+          isDetached ? "pl-(--workspace-titlebar-content-left)" : "pl-2",
           props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
@@ -1569,6 +1589,26 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 </MenuPopup>
               </Menu>
             ) : null}
+            {props.open !== false && props.onDetach ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      aria-label={gt("Detach panel to new window")}
+                      className="shrink-0"
+                      onClick={props.onDetach}
+                      size="icon-xs"
+                      variant="ghost-muted"
+                    />
+                  }
+                >
+                  <ExternalLink className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipPopup side="bottom">
+                  <T>Detach panel to new window</T>
+                </TooltipPopup>
+              </Tooltip>
+            ) : null}
           </div>
         </ScrollArea>
         {tabScrollState.hasOverflow ? (
@@ -1652,6 +1692,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             deviceAvailable={props.deviceAvailable}
             sideChatAvailable={props.sideChatAvailable === true}
             sideChatDisabledReason={props.sideChatDisabledReason ?? null}
+            onDetach={props.onDetach}
           />
         ) : (
           props.children
