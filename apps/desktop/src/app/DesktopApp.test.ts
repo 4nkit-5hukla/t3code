@@ -53,6 +53,7 @@ import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
 
 import * as BrowserImport from "../preview/BrowserImport/BrowserImport.ts";
+import * as PreviewPasswordVault from "../preview/PasswordVault.ts";
 import * as DesktopBackendConfiguration from "../backend/DesktopBackendConfiguration.ts";
 import * as DesktopCliCommand from "./DesktopCliCommand.ts";
 import * as DesktopCliShim from "./DesktopCliShim.ts";
@@ -203,6 +204,7 @@ const runStubbedDesktop = (stub: StubbedDesktop) =>
       Effect.provide(
         Layer.mergeAll(
           Layer.mock(BrowserImport.BrowserImport, {}),
+          Layer.mock(PreviewPasswordVault.PreviewPasswordVault, {}),
           Layer.mock(ChildProcessSpawner.ChildProcessSpawner, {}),
           Layer.mock(DesktopBackendConfiguration.DesktopBackendConfiguration, {}),
           Layer.mock(DesktopCliCommand.DesktopCliCommand, {}),

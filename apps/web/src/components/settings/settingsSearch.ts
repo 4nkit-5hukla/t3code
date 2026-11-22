@@ -1143,6 +1143,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("preview color scheme light dark system os")],
   },
   {
+    id: "browser-passwords",
+    title: msg("Saved passwords"),
+    to: "/settings/browser",
+    targetId: "browser-passwords",
+    searchTerms: [msg("password manager autofill login email username credentials localhost port")],
+  },
+  {
     id: "browser-recording-frame-rate",
     title: msg("Browser recording frame rate"),
     to: "/settings/browser",

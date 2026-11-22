@@ -136,6 +136,11 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     return () => ipcRenderer.removeListener(IpcChannels.TRACKPAD_SCROLL_END_CHANNEL, handler);
   },
   revealWindow: () => ipcRenderer.invoke(IpcChannels.REVEAL_WINDOW_CHANNEL),
+  browserPasswords: {
+    list: () => ipcRenderer.invoke(IpcChannels.BROWSER_PASSWORDS_LIST_CHANNEL),
+    save: (input: unknown) => ipcRenderer.invoke(IpcChannels.BROWSER_PASSWORDS_SAVE_CHANNEL, input),
+    remove: (id: string) => ipcRenderer.invoke(IpcChannels.BROWSER_PASSWORDS_REMOVE_CHANNEL, id),
+  },
   openDetachedWindow: (targetPath: string) =>
     ipcRenderer.invoke(IpcChannels.OPEN_DETACHED_WINDOW_CHANNEL, targetPath),
   closeDetachedWindow: () => ipcRenderer.invoke(IpcChannels.CLOSE_DETACHED_WINDOW_CHANNEL),

@@ -638,6 +638,10 @@
     "./paletteSearchCopy": {
       "types": "./src/paletteSearchCopy.ts",
       "import": "./src/paletteSearchCopy.ts"
+    },
+    "./browserPasswordSites": {
+      "types": "./src/browserPasswordSites.ts",
+      "import": "./src/browserPasswordSites.ts"
     }
   },
   "scripts": {

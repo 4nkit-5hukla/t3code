@@ -17,6 +17,8 @@ import {
   DesktopPreviewSetColorSchemeInputSchema,
   DesktopPreviewSetZoomFactorInputSchema,
   BrowserImportResult,
+  BrowserPasswordEntry,
+  BrowserPasswordSaveInput,
   BrowserImportSource,
   DesktopPreviewClearDataInputSchema,
   DesktopPreviewImportCookiesInputSchema,
@@ -38,6 +40,7 @@ import * as NodeURL from "node:url";
 
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import * as BrowserImport from "../../preview/BrowserImport/BrowserImport.ts";
+import * as PreviewPasswordVault from "../../preview/PasswordVault.ts";
 import * as LoopbackTunnel from "../../preview/LoopbackTunnel.ts";
 import * as PreviewManager from "../../preview/Manager.ts";
 import { normalizeCaptureFailure } from "../../preview/captureErrors.ts";
@@ -386,6 +389,36 @@ export const listBrowserImportSources = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.preview.listBrowserImportSources")(function* () {
     const browserImport = yield* BrowserImport.BrowserImport;
     return yield* browserImport.listSources;
+  }),
+});
+
+export const listBrowserPasswords = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.BROWSER_PASSWORDS_LIST_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Array(BrowserPasswordEntry),
+  handler: Effect.fn("desktop.ipc.preview.listBrowserPasswords")(function* () {
+    const vault = yield* PreviewPasswordVault.PreviewPasswordVault;
+    return yield* vault.list;
+  }),
+});
+
+export const saveBrowserPassword = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.BROWSER_PASSWORDS_SAVE_CHANNEL,
+  payload: BrowserPasswordSaveInput,
+  result: BrowserPasswordEntry,
+  handler: Effect.fn("desktop.ipc.preview.saveBrowserPassword")(function* (input) {
+    const vault = yield* PreviewPasswordVault.PreviewPasswordVault;
+    return yield* vault.save(input);
+  }),
+});
+
+export const removeBrowserPassword = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.BROWSER_PASSWORDS_REMOVE_CHANNEL,
+  payload: Schema.String,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.preview.removeBrowserPassword")(function* (id) {
+    const vault = yield* PreviewPasswordVault.PreviewPasswordVault;
+    yield* vault.remove(id);
   }),
 });
 

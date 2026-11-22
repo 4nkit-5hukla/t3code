@@ -119,6 +119,7 @@ import { useSearchableSetting } from "./settingsSearch";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
+import { BrowserPasswordsSetting } from "./BrowserPasswordsSettings";
 import type { ImportOutcome } from "./browserImportWizard.logic";
 
 const FILL_VALUE = "fill";
@@ -1717,6 +1718,11 @@ export function BrowserSettingsPanel() {
             <BrowserAppearanceSetting disabled={desktopOnly} />
           </SettingsUnavailableGroup>
         </AdvancedSettings>
+      </SettingsSection>
+      <SettingsSection id="browser-passwords" title={gt("Passwords")}>
+        <SettingsUnavailableGroup message={desktopOnlyMessage}>
+          <BrowserPasswordsSetting disabled={desktopOnly} />
+        </SettingsUnavailableGroup>
       </SettingsSection>
       <SettingsSection id="browser-recordings" title={gt("Recordings")}>
         <SettingsUnavailableGroup message={desktopOnlyMessage}>

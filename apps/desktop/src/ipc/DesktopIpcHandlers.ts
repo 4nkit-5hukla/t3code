@@ -188,5 +188,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
     >(previewMethod);
   }
   yield* ipc.handle(PreviewIpc.listBrowserImportSources);
+  yield* ipc.handle(PreviewIpc.listBrowserPasswords);
+  yield* ipc.handle(PreviewIpc.saveBrowserPassword);
+  yield* ipc.handle(PreviewIpc.removeBrowserPassword);
   yield* ipc.handle(PreviewIpc.importBrowserCookies);
 });

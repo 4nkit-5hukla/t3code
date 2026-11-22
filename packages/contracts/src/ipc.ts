@@ -14,6 +14,7 @@ import { AdvertisedEndpoint } from "./remoteAccess.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings.ts";
 import type { EditorId } from "./editor.ts";
+import type { BrowserPasswordEntry, BrowserPasswordSaveInput } from "./browserPasswords.ts";
 import { KeybindingShortcut, type PreviewForwardedShortcut } from "./keybindings.ts";
 
 import type {
@@ -1069,7 +1070,15 @@ export type DesktopMediaRead = typeof DesktopMediaReadSchema.Type;
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+/** The in-app browser's saved logins; passwords stay encrypted on disk with the OS keychain. */
+export interface DesktopBrowserPasswordsBridge {
+  list: () => Promise<ReadonlyArray<BrowserPasswordEntry>>;
+  save: (input: BrowserPasswordSaveInput) => Promise<BrowserPasswordEntry>;
+  remove: (id: string) => Promise<void>;
+}
+
 export interface DesktopBridge {
+  browserPasswords?: DesktopBrowserPasswordsBridge;
   openDetachedWindow?: (targetPath: string) => Promise<void>;
   closeDetachedWindow?: () => Promise<void>;
   getDetachedWindowState?: () => Promise<boolean>;

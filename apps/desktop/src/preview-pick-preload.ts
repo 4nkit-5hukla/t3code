@@ -6,6 +6,7 @@ import {
 } from "./preview/GuestProtocol.ts";
 import { installPasskeyBridge } from "./preview/PasskeyBridge.ts";
 import "./preview/PickPreload.ts";
+import "./preview/PasswordAutofill.ts";
 
 // Electron hands webPreferences.additionalArguments to sandboxed preloads in process.argv.
 if (process.argv.includes(PASSKEY_BRIDGE_ARGUMENT)) {
