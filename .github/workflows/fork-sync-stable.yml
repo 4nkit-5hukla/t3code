@@ -236,7 +236,7 @@ jobs:
           notes="T3 Code $TAG from $UPSTREAM_REPOSITORY with this fork's features (detachable right panel, browser password manager).
 
           Unsigned build for Apple silicon. After moving the app to Applications, run:
-          \`xattr -cr /Applications/T3\\ Code*.app\`"
+          \`xattr -cr \"/Applications/T3 Code (Asterisk).app\"\`"
           if gh release view "$release" >/dev/null 2>&1; then
             gh release upload "$release" "${assets[@]}" --clobber
           else
