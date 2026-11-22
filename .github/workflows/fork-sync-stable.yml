@@ -209,6 +209,10 @@ jobs:
 
       - uses: ./.github/actions/setup-ci-deps
 
+      # Upstream stamps the release version at build time; the committed manifests lag a release.
+      - name: Align package versions to the release
+        run: node scripts/update-release-package-versions.ts "${TAG#v}"
+
       - name: Build the macOS app
         env:
           # Updates come from this fork's releases, never upstream's.
